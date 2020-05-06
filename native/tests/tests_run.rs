@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use ckb_simple_account_layer::{run, CkbBlake2bHasher, Config};
+use ckb_simple_account_layer::{run_and_update_tree, CkbBlake2bHasher, Config};
 use hex::decode_to_slice;
 use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree, H256};
 use std::fs::File;
@@ -62,7 +62,7 @@ pub fn test_run() {
     let program: Bytes = program.into();
 
     let config = build_dummy_config();
-    run(&config, &mut tree, &program).unwrap();
+    run_and_update_tree(&config, &mut tree, &program).unwrap();
 
     let expected_root_hash =
         hex_to_h256("a4cbf1b69a848396ac759f362679e2b185ac87a17cba747d2db1ef6fd929042f");

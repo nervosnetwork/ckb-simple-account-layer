@@ -13,6 +13,7 @@ use sparse_merkle_tree::{
     traits::{Hasher, Store},
     SparseMerkleTree, H256,
 };
+use std::collections::HashMap;
 use std::error::Error as StdError;
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Display)]
@@ -52,8 +53,30 @@ pub struct Config {
     pub validator_outpoint: OutPoint,
 }
 
+#[derive(Debug, PartialEq, Clone, Eq, Default)]
+pub struct RunResult {
+    pub read_values: HashMap<H256, H256>,
+    pub write_values: HashMap<H256, H256>,
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Default)]
+pub struct RunProofResult {
+    /// Pairs of values in the old tree that is read by the program
+    pub read_values: Vec<(H256, H256)>,
+    /// Proof of read_values
+    pub read_proof: Bytes,
+    /// Tuple of values that is written by the program. Order of items is
+    /// key, old value, new value
+    pub write_values: Vec<(H256, H256, H256)>,
+    /// Proof of all old values in write_values in the old tree. This proof
+    /// Can also be used together with new values in write_values to calculate
+    /// new root hash
+    pub write_old_proof: Bytes,
+}
+
 struct TreeSyscalls<'a, H: Hasher + Default, S: Store<H256>> {
-    tree: &'a mut SparseMerkleTree<H, H256, S>,
+    tree: &'a SparseMerkleTree<H, H256, S>,
+    result: &'a mut RunResult,
 }
 
 fn load_data<Mac: SupportMachine>(machine: &mut Mac, address: u64) -> Result<H256, VMError> {
@@ -90,9 +113,7 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
                 let key = load_data(machine, key_address)?;
                 let value_address = machine.registers()[A1].to_u64();
                 let value = load_data(machine, value_address)?;
-                self.tree
-                    .update(key, value)
-                    .map_err(|_| VMError::Unexpected)?;
+                self.result.write_values.insert(key, value);
                 machine.set_register(A0, Mac::REG::from_u64(0));
                 Ok(true)
             }
@@ -100,7 +121,14 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
                 let key_address = machine.registers()[A0].to_u64();
                 let key = load_data(machine, key_address)?;
                 let value_address = machine.registers()[A1].to_u64();
-                let value = self.tree.get(&key).map_err(|_| VMError::Unexpected)?;
+                let value = match self.result.write_values.get(&key) {
+                    Some(value) => *value,
+                    None => {
+                        let tree_value = self.tree.get(&key).map_err(|_| VMError::Unexpected)?;
+                        self.result.read_values.insert(key, tree_value);
+                        tree_value
+                    }
+                };
                 store_data(machine, value_address, &value)?;
                 machine.set_register(A0, Mac::REG::from_u64(0));
                 Ok(true)
@@ -112,24 +140,84 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
 
 pub fn run<H: Hasher + Default, S: Store<H256>>(
     config: &Config,
+    tree: &SparseMerkleTree<H, H256, S>,
+    program: &Bytes,
+) -> Result<RunResult, Box<dyn StdError>> {
+    let mut result = RunResult::default();
+    {
+        let core_machine = Box::<AsmCoreMachine>::default();
+        let machine_builder =
+            DefaultMachineBuilder::new(core_machine).syscall(Box::new(TreeSyscalls {
+                tree,
+                result: &mut result,
+            }));
+        let mut machine = AsmMachine::new(machine_builder.build(), None);
+        let program_name = Bytes::from_static(b"generator");
+        let program_length_bytes = (program.len() as u32).to_le_bytes()[..].to_vec();
+        let program_length = Bytes::from(program_length_bytes);
+        machine.load_program(
+            &config.generator,
+            &[program_name, program_length, program.clone()],
+        )?;
+        let code = machine.run()?;
+        if code != 0 {
+            return Err(Error::InvalidResponseCode(code).into());
+        }
+    }
+    Ok(result)
+}
+
+pub fn run_and_update_tree<H: Hasher + Default, S: Store<H256>>(
+    config: &Config,
     tree: &mut SparseMerkleTree<H, H256, S>,
     program: &Bytes,
-) -> Result<(), Box<dyn StdError>> {
-    let core_machine = Box::<AsmCoreMachine>::default();
-    // TODO: generator syscalls
-    let machine_builder =
-        DefaultMachineBuilder::new(core_machine).syscall(Box::new(TreeSyscalls { tree }));
-    let mut machine = AsmMachine::new(machine_builder.build(), None);
-    let program_name = Bytes::from_static(b"generator");
-    let program_length_bytes = (program.len() as u32).to_le_bytes()[..].to_vec();
-    let program_length = Bytes::from(program_length_bytes);
-    machine.load_program(
-        &config.generator,
-        &[program_name, program_length, program.clone()],
-    )?;
-    let code = machine.run()?;
-    if code != 0 {
-        return Err(Error::InvalidResponseCode(code).into());
+) -> Result<RunProofResult, Box<dyn StdError>> {
+    let RunResult {
+        read_values,
+        write_values,
+    } = run(config, tree, program)?;
+    let Proof {
+        pairs: read_pairs,
+        proof: read_proof,
+    } = generate_proof(tree, &read_values)?;
+    let mut write_old_values = HashMap::default();
+    for key in write_values.keys() {
+        write_old_values.insert(*key, tree.get(key)?);
     }
-    Ok(())
+    let Proof {
+        pairs: write_pairs,
+        proof: write_old_proof,
+    } = generate_proof(tree, &write_old_values)?;
+    let write_tuples = write_pairs
+        .into_iter()
+        .map(|(key, old_value)| (key, old_value, *write_values.get(&key).unwrap()))
+        .collect();
+    for (key, value) in &write_values {
+        tree.update(*key, *value)?;
+    }
+    Ok(RunProofResult {
+        read_values: read_pairs,
+        read_proof,
+        write_values: write_tuples,
+        write_old_proof,
+    })
+}
+
+struct Proof {
+    pairs: Vec<(H256, H256)>,
+    proof: Bytes,
+}
+
+fn generate_proof<H: Hasher + Default, S: Store<H256>>(
+    tree: &SparseMerkleTree<H, H256, S>,
+    values: &HashMap<H256, H256>,
+) -> Result<Proof, Box<dyn StdError>> {
+    let mut pairs: Vec<(H256, H256)> = values.iter().map(|(k, v)| (*k, *v)).collect();
+    pairs.sort_unstable_by_key(|(k, _)| *k);
+    let keys: Vec<H256> = pairs.iter().map(|(k, _)| *k).collect();
+    let proof = tree.merkle_proof(keys)?.compile(pairs.clone())?;
+    Ok(Proof {
+        pairs,
+        proof: proof.0.into(),
+    })
 }

@@ -6,6 +6,10 @@ language: node_js
 node_js:
   - 14
 
+env:
+  global:
+    - RUSTFLAGS="-D warnings"
+
 cache:
   - cargo
   - npm
@@ -30,5 +34,6 @@ script:
   - make test
   - make fmt
   - cd native; cargo test; cd ..
+  - cd native; cargo clippy; cd ..
   - cd native; cargo fmt --all; cd ..
   - git diff --exit-code
