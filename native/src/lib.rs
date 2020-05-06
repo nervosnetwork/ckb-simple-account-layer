@@ -45,6 +45,7 @@ impl Hasher for CkbBlake2bHasher {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Eq, Default)]
 pub struct Config {
     pub validator: Bytes,
     pub generator: Bytes,
