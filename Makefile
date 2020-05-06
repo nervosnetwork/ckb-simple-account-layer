@@ -16,7 +16,7 @@ build-smt:
 fmt:
 	clang-format -i --style=Google $(wildcard c/*.h c/*.c c/vms/**/*.c c/tests/main.c)
 
-test: c/tests/runtest
+test:
 	gcc c/tests/main.c -o c/tests/runtest $(CFLAGS)
 	./c/tests/runtest
 
