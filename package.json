@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "A simple account layer for Nervos CKB",
   "main": "index.js",
-  "scripts": {},
   "author": "Xuejie Xiao <xxuejie@gmail.com>",
   "license": "MIT",
   "scripts": {
