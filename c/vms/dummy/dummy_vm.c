@@ -35,7 +35,10 @@ int execute_vm(const uint8_t *source, uint32_t length,
     int ret;
     switch (source[i]) {
       case 'R':
-        ret = csal_change_fetch(existing_values, &source[i + 1], read_value);
+        ret = csal_change_fetch(changes, &source[i + 1], read_value);
+        if (ret != 0) {
+          ret = csal_change_fetch(existing_values, &source[i + 1], read_value);
+        }
         if (ret != 0) {
           return ret;
         }

@@ -215,9 +215,10 @@ fn generate_proof<H: Hasher + Default, S: Store<H256>>(
     let mut pairs: Vec<(H256, H256)> = values.iter().map(|(k, v)| (*k, *v)).collect();
     pairs.sort_unstable_by_key(|(k, _)| *k);
     let keys: Vec<H256> = pairs.iter().map(|(k, _)| *k).collect();
-    let proof = tree.merkle_proof(keys)?.compile(pairs.clone())?;
-    Ok(Proof {
-        pairs,
-        proof: proof.0.into(),
-    })
+    let proof: Bytes = if keys.is_empty() {
+        Vec::new().into()
+    } else {
+        tree.merkle_proof(keys)?.compile(pairs.clone())?.0.into()
+    };
+    Ok(Proof { pairs, proof })
 }

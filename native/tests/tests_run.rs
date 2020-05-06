@@ -72,3 +72,29 @@ pub fn test_run() {
         hex_to_h256("a939a47335f777eac4c40fbc0970e25f832a24e1d55adc45a7b76d63fe364e82");
     assert_eq!(expected_test_value, tree.get(&test_key).unwrap());
 }
+
+#[test]
+pub fn test_run_read_written_value() {
+    let mut tree: SparseMerkleTree<CkbBlake2bHasher, H256, DefaultStore<H256>> =
+        SparseMerkleTree::default();
+
+    let mut program = Vec::new();
+    program.push(0x57); // W
+    program.extend_from_slice(
+        hex_to_h256("e8c0265680a02b680b6cbc880348f062b825b28e237da7169aded4bcac0a04e5").as_slice(),
+    );
+    program.extend_from_slice(
+        hex_to_h256("2ca41595841e46ce8e74ad749e5c3f1d17202150f99c3d8631233ebdd19b19eb").as_slice(),
+    );
+    program.push(0x52); // R
+    program.extend_from_slice(
+        hex_to_h256("e8c0265680a02b680b6cbc880348f062b825b28e237da7169aded4bcac0a04e5").as_slice(),
+    );
+    program.extend_from_slice(
+        hex_to_h256("2ca41595841e46ce8e74ad749e5c3f1d17202150f99c3d8631233ebdd19b19eb").as_slice(),
+    );
+    let program: Bytes = program.into();
+
+    let config = build_dummy_config();
+    run_and_update_tree(&config, &mut tree, &program).unwrap();
+}
