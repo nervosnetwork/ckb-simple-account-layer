@@ -1,13 +1,20 @@
 #[macro_use]
 extern crate derive_more;
 
-use blake2b_rs::{Blake2b, Blake2bBuilder};
+mod smt;
+mod vm;
+
+pub use smt::CkbBlake2bHasher;
+
+use crate::{
+    smt::{generate_proof, Proof},
+    vm::TreeSyscalls,
+};
 use bytes::Bytes;
 use ckb_types::packed::OutPoint;
 use ckb_vm::{
     machine::asm::{AsmCoreMachine, AsmMachine},
-    registers::{A0, A1, A7},
-    DefaultMachineBuilder, Error as VMError, Memory, Register, SupportMachine, Syscalls,
+    DefaultMachineBuilder,
 };
 use sparse_merkle_tree::{
     traits::{Hasher, Store},
@@ -23,28 +30,6 @@ pub enum Error {
 }
 
 impl StdError for Error {}
-
-pub struct CkbBlake2bHasher(Blake2b);
-
-impl Default for CkbBlake2bHasher {
-    fn default() -> Self {
-        let blake2b = Blake2bBuilder::new(32)
-            .personal(b"ckb-default-hash")
-            .build();
-        CkbBlake2bHasher(blake2b)
-    }
-}
-
-impl Hasher for CkbBlake2bHasher {
-    fn write_h256(&mut self, h: &H256) {
-        self.0.update(h.as_slice());
-    }
-    fn finish(self) -> H256 {
-        let mut hash = [0u8; 32];
-        self.0.finalize(&mut hash);
-        hash.into()
-    }
-}
 
 #[derive(Debug, PartialEq, Clone, Eq, Default)]
 pub struct Config {
@@ -72,70 +57,6 @@ pub struct RunProofResult {
     /// Can also be used together with new values in write_values to calculate
     /// new root hash
     pub write_old_proof: Bytes,
-}
-
-struct TreeSyscalls<'a, H: Hasher + Default, S: Store<H256>> {
-    tree: &'a SparseMerkleTree<H, H256, S>,
-    result: &'a mut RunResult,
-}
-
-fn load_data<Mac: SupportMachine>(machine: &mut Mac, address: u64) -> Result<H256, VMError> {
-    let mut data = [0u8; 32];
-    for (i, c) in data.iter_mut().enumerate() {
-        *c = machine
-            .memory_mut()
-            .load8(&Mac::REG::from_u64(address).overflowing_add(&Mac::REG::from_u64(i as u64)))?
-            .to_u8();
-    }
-    Ok(H256::from(data))
-}
-
-fn store_data<Mac: SupportMachine>(
-    machine: &mut Mac,
-    address: u64,
-    data: &H256,
-) -> Result<(), VMError> {
-    machine.memory_mut().store_bytes(address, data.as_slice())
-}
-
-impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
-    for TreeSyscalls<'a, H, S>
-{
-    fn initialize(&mut self, _machine: &mut Mac) -> Result<(), VMError> {
-        Ok(())
-    }
-
-    fn ecall(&mut self, machine: &mut Mac) -> Result<bool, VMError> {
-        let code = machine.registers()[A7].to_u64();
-        match code {
-            3073 => {
-                let key_address = machine.registers()[A0].to_u64();
-                let key = load_data(machine, key_address)?;
-                let value_address = machine.registers()[A1].to_u64();
-                let value = load_data(machine, value_address)?;
-                self.result.write_values.insert(key, value);
-                machine.set_register(A0, Mac::REG::from_u64(0));
-                Ok(true)
-            }
-            3074 => {
-                let key_address = machine.registers()[A0].to_u64();
-                let key = load_data(machine, key_address)?;
-                let value_address = machine.registers()[A1].to_u64();
-                let value = match self.result.write_values.get(&key) {
-                    Some(value) => *value,
-                    None => {
-                        let tree_value = self.tree.get(&key).map_err(|_| VMError::Unexpected)?;
-                        self.result.read_values.insert(key, tree_value);
-                        tree_value
-                    }
-                };
-                store_data(machine, value_address, &value)?;
-                machine.set_register(A0, Mac::REG::from_u64(0));
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
 }
 
 pub fn run<H: Hasher + Default, S: Store<H256>>(
@@ -201,24 +122,4 @@ pub fn run_and_update_tree<H: Hasher + Default, S: Store<H256>>(
         write_values: write_tuples,
         write_old_proof,
     })
-}
-
-struct Proof {
-    pairs: Vec<(H256, H256)>,
-    proof: Bytes,
-}
-
-fn generate_proof<H: Hasher + Default, S: Store<H256>>(
-    tree: &SparseMerkleTree<H, H256, S>,
-    values: &HashMap<H256, H256>,
-) -> Result<Proof, Box<dyn StdError>> {
-    let mut pairs: Vec<(H256, H256)> = values.iter().map(|(k, v)| (*k, *v)).collect();
-    pairs.sort_unstable_by_key(|(k, _)| *k);
-    let keys: Vec<H256> = pairs.iter().map(|(k, _)| *k).collect();
-    let proof: Bytes = if keys.is_empty() {
-        Vec::new().into()
-    } else {
-        tree.merkle_proof(keys)?.compile(pairs.clone())?.0.into()
-    };
-    Ok(Proof { pairs, proof })
 }
