@@ -34,8 +34,8 @@ pub(crate) struct Proof {
     pub(crate) proof: Bytes,
 }
 
-pub(crate) fn generate_proof<H: Hasher + Default, S: Store<H256>>(
-    tree: &SparseMerkleTree<H, H256, S>,
+pub(crate) fn generate_proof<S: Store<H256>>(
+    tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     values: &HashMap<H256, H256>,
 ) -> Result<Proof, Box<dyn StdError>> {
     let mut pairs: Vec<(H256, H256)> = values.iter().map(|(k, v)| (*k, *v)).collect();

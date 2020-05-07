@@ -16,10 +16,7 @@ use ckb_vm::{
     machine::asm::{AsmCoreMachine, AsmMachine},
     DefaultMachineBuilder,
 };
-use sparse_merkle_tree::{
-    traits::{Hasher, Store},
-    SparseMerkleTree, H256,
-};
+use sparse_merkle_tree::{traits::Store, SparseMerkleTree, H256};
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
@@ -59,9 +56,9 @@ pub struct RunProofResult {
     pub write_old_proof: Bytes,
 }
 
-pub fn run<H: Hasher + Default, S: Store<H256>>(
+pub fn run<S: Store<H256>>(
     config: &Config,
-    tree: &SparseMerkleTree<H, H256, S>,
+    tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     program: &Bytes,
 ) -> Result<RunResult, Box<dyn StdError>> {
     let mut result = RunResult::default();
@@ -88,9 +85,9 @@ pub fn run<H: Hasher + Default, S: Store<H256>>(
     Ok(result)
 }
 
-pub fn run_and_update_tree<H: Hasher + Default, S: Store<H256>>(
+pub fn run_and_update_tree<S: Store<H256>>(
     config: &Config,
-    tree: &mut SparseMerkleTree<H, H256, S>,
+    tree: &mut SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     program: &Bytes,
 ) -> Result<RunProofResult, Box<dyn StdError>> {
     let RunResult {
