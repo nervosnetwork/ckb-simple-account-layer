@@ -33,7 +33,7 @@ script:
   - npm run fmt
   - make test
   - make fmt
-  - cd crates/layer; cargo test; cd ..
-  - cd crates/layer; cargo clippy; cd ..
-  - cd crates/layer; cargo fmt --all; cd ..
+  - cd crates/layer && cargo test && cd ../..
+  - cd crates/layer && cargo clippy && cd ../..
+  - cd crates/layer && cargo fmt --all && cd ../..
   - git diff --exit-code
