@@ -1,4 +1,8 @@
-use crate::{run, smt::CkbBlake2bHasher, Config, Error};
+use crate::{
+    run,
+    smt::{CkbBlake2bHasher, ClearStore},
+    Config, Error,
+};
 use bytes::Bytes;
 use ckb_types::{
     core::{DepType, TransactionBuilder, TransactionView},
@@ -7,17 +11,18 @@ use ckb_types::{
     },
     prelude::*,
 };
+use replace_with::replace_with_or_abort_and_return;
 use sparse_merkle_tree::{traits::Store, SparseMerkleTree, H256};
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
-pub struct CkbSimpleAccount<S: Store<H256>> {
+pub struct CkbSimpleAccount<S: Store<H256> + ClearStore> {
     pub config: Config,
     pub tree: SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     pub last_cell: Option<(OutPoint, CellOutput, Bytes)>,
 }
 
-impl<S: Store<H256> + Default> CkbSimpleAccount<S> {
+impl<S: Store<H256> + ClearStore + Default> CkbSimpleAccount<S> {
     pub fn empty(config: Config) -> Self {
         CkbSimpleAccount {
             config,
@@ -113,7 +118,7 @@ impl<S: Store<H256> + Default> CkbSimpleAccount<S> {
     }
 }
 
-impl<S: Store<H256>> CkbSimpleAccount<S> {
+impl<S: Store<H256> + ClearStore> CkbSimpleAccount<S> {
     pub fn empty_with_tree(
         config: Config,
         tree: SparseMerkleTree<CkbBlake2bHasher, H256, S>,
@@ -223,8 +228,16 @@ impl<S: Store<H256>> CkbSimpleAccount<S> {
             }
         }
         if outputs.is_empty() {
-            // Destroying action
-            return Err("TODO: find a way to clean a full SMT tree".into());
+            replace_with_or_abort_and_return(&mut self.tree, |tree| {
+                let root_hash = *tree.root();
+                let mut store = tree.take_store();
+                match store.clear_store() {
+                    Ok(()) => (Ok(()), SparseMerkleTree::new(H256::zero(), store)),
+                    Err(e) => (Err(e), SparseMerkleTree::new(root_hash, store)),
+                }
+            })?;
+            self.last_cell = None;
+            return Ok(());
         }
         let (index, (output, output_data)) = outputs.pop().unwrap();
         let witness = view

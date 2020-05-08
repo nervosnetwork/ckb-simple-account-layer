@@ -9,6 +9,10 @@ use sparse_merkle_tree::{
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 
+pub trait ClearStore {
+    fn clear_store(&mut self) -> Result<(), Box<dyn StdError>>;
+}
+
 pub struct CkbBlake2bHasher(Blake2b);
 
 impl Default for CkbBlake2bHasher {

@@ -6,7 +6,7 @@ mod smt;
 mod vm;
 
 pub use ckb::CkbSimpleAccount;
-pub use smt::CkbBlake2bHasher;
+pub use smt::{CkbBlake2bHasher, ClearStore};
 
 use crate::{
     smt::{generate_proof, Proof, WrappedStore},
