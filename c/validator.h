@@ -442,6 +442,7 @@ int main() {
   if ((flags & UNUSED_FLAGS) != 0) {
     return ERROR_UNSUPPORED_FLAGS;
   }
+  /* TODO: flag to enable type ID behavior */
 
   /*
    * Witness shall contain the content used for validating account state change.
@@ -499,6 +500,10 @@ int main() {
   len = 32;
   ret =
       ckb_load_cell_data(output_root_hash, &len, 0, 0, CKB_SOURCE_GROUP_OUTPUT);
+  if (ret == CKB_INDEX_OUT_OF_BOUND && content_bytes_seg.size == 0) {
+    /* This is a special mode for destorying cells */
+    return CKB_SUCCESS;
+  }
   if (ret != CKB_SUCCESS) {
     return ret;
   }

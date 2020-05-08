@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use ckb_simple_account_layer::{run_and_update_tree, CkbBlake2bHasher, Config};
+use ckb_simple_account_layer::{run, CkbBlake2bHasher, Config};
 use hex::decode_to_slice;
 use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree, H256};
 use std::fs::File;
@@ -43,6 +43,7 @@ pub fn test_run() {
         hex_to_h256("9158ce9b0e11dd150ba2ae5d55c1db04b1c5986ec626f2e38a93fe8ad0b2923b"),
     )
     .unwrap();
+    let old_root_hash = *tree.root();
 
     let mut program = Vec::new();
     program.push(0x52); // R
@@ -62,10 +63,15 @@ pub fn test_run() {
     let program: Bytes = program.into();
 
     let config = build_dummy_config();
-    run_and_update_tree(&config, &mut tree, &program).unwrap();
+    let result = run(&config, &tree, &program).unwrap();
 
     let expected_root_hash =
         hex_to_h256("a4cbf1b69a848396ac759f362679e2b185ac87a17cba747d2db1ef6fd929042f");
+    let committed_root_hash = result.committed_root_hash(&tree).unwrap();
+    assert_eq!(expected_root_hash, committed_root_hash);
+    assert_eq!(&old_root_hash, tree.root());
+
+    result.commit(&mut tree).unwrap();
     assert_eq!(&expected_root_hash, tree.root());
     let test_key = hex_to_h256("a9bb945be71f0bd2757d33d2465b6387383da42f321072e47472f0c9c7428a8a");
     let expected_test_value =
@@ -75,7 +81,7 @@ pub fn test_run() {
 
 #[test]
 pub fn test_run_read_written_value() {
-    let mut tree: SparseMerkleTree<CkbBlake2bHasher, H256, DefaultStore<H256>> =
+    let tree: SparseMerkleTree<CkbBlake2bHasher, H256, DefaultStore<H256>> =
         SparseMerkleTree::default();
 
     let mut program = Vec::new();
@@ -96,5 +102,5 @@ pub fn test_run_read_written_value() {
     let program: Bytes = program.into();
 
     let config = build_dummy_config();
-    run_and_update_tree(&config, &mut tree, &program).unwrap();
+    run(&config, &tree, &program).unwrap();
 }

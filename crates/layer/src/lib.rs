@@ -1,17 +1,19 @@
 #[macro_use]
 extern crate derive_more;
 
+mod ckb;
 mod smt;
 mod vm;
 
+pub use ckb::CkbSimpleAccount;
 pub use smt::CkbBlake2bHasher;
 
 use crate::{
-    smt::{generate_proof, Proof},
+    smt::{generate_proof, Proof, WrappedStore},
     vm::TreeSyscalls,
 };
 use bytes::Bytes;
-use ckb_types::packed::OutPoint;
+use ckb_types::packed::{Byte32, OutPoint, Script};
 use ckb_vm::{
     machine::asm::{AsmCoreMachine, AsmMachine},
     DefaultMachineBuilder,
@@ -20,10 +22,20 @@ use sparse_merkle_tree::{traits::Store, SparseMerkleTree, H256};
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Display)]
+#[derive(Debug, PartialEq, Clone, Eq, Display)]
 pub enum Error {
     #[display(fmt = "invalid response code {}", "_0")]
     InvalidResponseCode(i8),
+    #[display(fmt = "invalid transaction {:#x}: {}", "_0", "_1")]
+    InvalidTransaction(Byte32, String),
+    #[display(fmt = "other error: {}", "_0")]
+    Other(String),
+}
+
+impl From<&str> for Error {
+    fn from(s: &str) -> Self {
+        Error::Other(s.to_string())
+    }
 }
 
 impl StdError for Error {}
@@ -33,6 +45,13 @@ pub struct Config {
     pub validator: Bytes,
     pub generator: Bytes,
     pub validator_outpoint: OutPoint,
+    pub type_script: Script,
+    /// Lock script to use when creating the next cell. Creation would fail in
+    /// initial cell creation when this field is missing. Updation, however, would
+    /// automatically used the spent cell's lock script when this field is missing.
+    pub lock_script: Option<Script>,
+    /// Initial capacity used to create the first cell
+    pub capacity: u64,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Default)]
@@ -85,38 +104,97 @@ pub fn run<S: Store<H256>>(
     Ok(result)
 }
 
-pub fn run_and_update_tree<S: Store<H256>>(
-    config: &Config,
-    tree: &mut SparseMerkleTree<CkbBlake2bHasher, H256, S>,
-    program: &Bytes,
-) -> Result<RunProofResult, Box<dyn StdError>> {
-    let RunResult {
-        read_values,
-        write_values,
-    } = run(config, tree, program)?;
-    let Proof {
-        pairs: read_pairs,
-        proof: read_proof,
-    } = generate_proof(tree, &read_values)?;
-    let mut write_old_values = HashMap::default();
-    for key in write_values.keys() {
-        write_old_values.insert(*key, tree.get(key)?);
+impl RunResult {
+    pub fn generate_proof<S: Store<H256>>(
+        &self,
+        tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
+    ) -> Result<RunProofResult, Box<dyn StdError>> {
+        let read_values = &self.read_values;
+        let write_values = &self.write_values;
+        let Proof {
+            pairs: read_pairs,
+            proof: read_proof,
+        } = generate_proof(tree, &read_values)?;
+        let mut write_old_values = HashMap::default();
+        for key in write_values.keys() {
+            write_old_values.insert(*key, tree.get(key)?);
+        }
+        let Proof {
+            pairs: write_pairs,
+            proof: write_old_proof,
+        } = generate_proof(tree, &write_old_values)?;
+        let write_tuples = write_pairs
+            .into_iter()
+            .map(|(key, old_value)| (key, old_value, *write_values.get(&key).unwrap()))
+            .collect();
+        Ok(RunProofResult {
+            read_values: read_pairs,
+            read_proof,
+            write_values: write_tuples,
+            write_old_proof,
+        })
     }
-    let Proof {
-        pairs: write_pairs,
-        proof: write_old_proof,
-    } = generate_proof(tree, &write_old_values)?;
-    let write_tuples = write_pairs
-        .into_iter()
-        .map(|(key, old_value)| (key, old_value, *write_values.get(&key).unwrap()))
-        .collect();
-    for (key, value) in &write_values {
-        tree.update(*key, *value)?;
+
+    // After this method returns successfully, the tree will be reverted to original value,
+    // we only mark tree as mutable to make Rust happy.
+    pub fn committed_root_hash<S: Store<H256>>(
+        &self,
+        tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
+    ) -> Result<H256, Box<dyn StdError>> {
+        let root_hash = *tree.root();
+        let temp_store = WrappedStore::new(tree.store());
+        let mut temp_tree: SparseMerkleTree<CkbBlake2bHasher, H256, WrappedStore<S>> =
+            SparseMerkleTree::new(root_hash, temp_store);
+        for (key, value) in &self.write_values {
+            temp_tree.update(*key, *value)?;
+        }
+        Ok(*temp_tree.root())
     }
-    Ok(RunProofResult {
-        read_values: read_pairs,
-        read_proof,
-        write_values: write_tuples,
-        write_old_proof,
-    })
+
+    pub fn commit<S: Store<H256>>(
+        &self,
+        tree: &mut SparseMerkleTree<CkbBlake2bHasher, H256, S>,
+    ) -> Result<(), Box<dyn StdError>> {
+        for (key, value) in &self.write_values {
+            tree.update(*key, *value)?;
+        }
+        Ok(())
+    }
+}
+
+impl RunProofResult {
+    pub fn serialize(&self, program: &Bytes) -> Result<Bytes, Box<dyn StdError>> {
+        let mut buffer = Vec::new();
+        if program.len() > std::u32::MAX as usize {
+            return Err("Program is too long!".into());
+        }
+        buffer.extend_from_slice(&(program.len() as u32).to_le_bytes()[..]);
+        buffer.extend_from_slice(program);
+        if self.read_values.len() > std::u32::MAX as usize {
+            return Err("Too many read values!".into());
+        }
+        buffer.extend_from_slice(&(self.read_values.len() as u32).to_le_bytes()[..]);
+        for (key, value) in &self.read_values {
+            buffer.extend_from_slice(key.as_slice());
+            buffer.extend_from_slice(value.as_slice());
+        }
+        if self.read_proof.len() > std::u32::MAX as usize {
+            return Err("Read proof is too long!".into());
+        }
+        buffer.extend_from_slice(&(self.read_proof.len() as u32).to_le_bytes()[..]);
+        buffer.extend_from_slice(&self.read_proof);
+        if self.write_values.len() > std::u32::MAX as usize {
+            return Err("Too many write values!".into());
+        }
+        buffer.extend_from_slice(&(self.write_values.len() as u32).to_le_bytes()[..]);
+        for (_, old_value, _) in &self.write_values {
+            buffer.extend_from_slice(old_value.as_slice());
+        }
+        if self.write_old_proof.len() > std::u32::MAX as usize {
+            return Err("Write old proof is too long!".into());
+        }
+        buffer.extend_from_slice(&(self.write_old_proof.len() as u32).to_le_bytes()[..]);
+        buffer.extend_from_slice(&self.write_old_proof);
+        Ok(buffer.into())
+    }
 }
