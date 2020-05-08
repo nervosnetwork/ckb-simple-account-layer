@@ -3,8 +3,7 @@ use bytes::Bytes;
 use ckb_types::{
     core::{DepType, TransactionBuilder, TransactionView},
     packed::{
-        BytesOpt, CellDep, CellInput, CellOutput, OutPoint, ScriptOpt, Transaction,
-        WitnessArgs,
+        BytesOpt, CellDep, CellInput, CellOutput, OutPoint, ScriptOpt, Transaction, WitnessArgs,
     },
     prelude::*,
 };
@@ -228,20 +227,30 @@ impl<S: Store<H256>> CkbSimpleAccount<S> {
             return Err("TODO: find a way to clean a full SMT tree".into());
         }
         let (index, (output, output_data)) = outputs.pop().unwrap();
-        let witness = view.witnesses().get(index).ok_or_else(|| "Witness is missing!")?;
-        let witness_args = WitnessArgs::from_slice(witness.as_slice()).map_err(|_| "Witness format is invalid!")?;
+        let witness = view
+            .witnesses()
+            .get(index)
+            .ok_or_else(|| "Witness is missing!")?;
+        let witness_args = WitnessArgs::from_slice(witness.as_slice())
+            .map_err(|_| "Witness format is invalid!")?;
         let program = if self.last_cell.is_none() {
             witness_args.output_type()
         } else {
             witness_args.input_type()
-        }.to_opt().ok_or_else(|| "Witness format is invalid!")?.raw_data();
+        }
+        .to_opt()
+        .ok_or_else(|| "Witness format is invalid!")?
+        .raw_data();
         let result = run(&self.config, &self.tree, &program)?;
         let new_root_hash = result.committed_root_hash(&self.tree)?;
         if output_data.len() != 32 || output_data != new_root_hash.as_slice() {
             return Err("Invalid new root hash!".into());
         }
         result.commit(&mut self.tree)?;
-        let out_point = OutPoint::new_builder().tx_hash(view.hash()).index((index as u32).pack()).build();
+        let out_point = OutPoint::new_builder()
+            .tx_hash(view.hash())
+            .index((index as u32).pack())
+            .build();
         self.last_cell = Some((out_point, output, output_data));
         Ok(())
     }
