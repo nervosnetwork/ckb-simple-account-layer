@@ -10,11 +10,11 @@ edition = "2018"
 blake2b-rs = { version = "0.1" }
 bytes = "0.5.4"
 ckb-types = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }
+ckb-script = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }
 ckb-vm = { version = "0.19.1", features = ["asm"] }
 derive_more = "0.99.2"
 replace_with = "0.1.5"
 sparse-merkle-tree = { git = "https://github.com/jjyr/sparse-merkle-tree", rev = "0e313cf" }
 
 [dev-dependencies]
-ckb-script = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }
 hex = "0.4.2"

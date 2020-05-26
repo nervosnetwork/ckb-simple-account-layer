@@ -155,12 +155,7 @@ impl<S: Store<H256> + ClearStore> CkbSimpleAccount<S> {
         let data = BytesOpt::new_builder()
             .set(Some(proof.serialize(program)?.pack()))
             .build();
-        let mut witness_builder = WitnessArgs::new_builder();
-        if self.last_cell.is_none() {
-            witness_builder = witness_builder.output_type(data);
-        } else {
-            witness_builder = witness_builder.input_type(data);
-        }
+        let witness_builder = WitnessArgs::new_builder().output_type(data);
         let mut output_builder = CellOutput::new_builder()
             .type_(
                 ScriptOpt::new_builder()
