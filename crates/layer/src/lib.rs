@@ -10,13 +10,13 @@ pub use smt::{CkbBlake2bHasher, ClearStore};
 
 use crate::{
     smt::{generate_proof, Proof, WrappedStore},
-    vm::VmSyscalls,
+    vm::{ExtraSyscalls, TreeSyscalls},
 };
 use bytes::Bytes;
 use ckb_types::packed::{Byte32, OutPoint, Script};
 use ckb_vm::{
     machine::asm::{AsmCoreMachine, AsmMachine},
-    DefaultMachineBuilder,
+    DefaultMachineBuilder, Error as VMError, SupportMachine,
 };
 use sparse_merkle_tree::{traits::Store, SparseMerkleTree, H256};
 use std::collections::HashMap;
@@ -58,8 +58,6 @@ pub struct Config {
 pub struct RunResult {
     pub read_values: HashMap<H256, H256>,
     pub write_values: HashMap<H256, H256>,
-    pub return_data: Bytes,
-    pub logs: Vec<Bytes>,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Default)]
@@ -77,19 +75,35 @@ pub struct RunProofResult {
     pub write_old_proof: Bytes,
 }
 
-pub fn run<S: Store<H256>>(
+/// A context to run the program
+pub trait RunContext<Mac: SupportMachine> {
+    /// Handle extra syscalls
+    fn ecall(&mut self, machine: &mut Mac) -> Result<bool, VMError>;
+}
+/// A dummy RunContext do nothing
+pub struct DefaultRunContext {}
+
+impl<Mac: SupportMachine> RunContext<Mac> for DefaultRunContext {
+    fn ecall(&mut self, _machine: &mut Mac) -> Result<bool, VMError> {
+        Ok(false)
+    }
+}
+
+pub fn run_with_context<S: Store<H256>, C: RunContext<Box<AsmCoreMachine>>>(
     config: &Config,
     tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     program: &Bytes,
+    context: &mut C,
 ) -> Result<RunResult, Box<dyn StdError>> {
     let mut result = RunResult::default();
     {
         let core_machine = Box::<AsmCoreMachine>::default();
-        let machine_builder =
-            DefaultMachineBuilder::new(core_machine).syscall(Box::new(VmSyscalls {
+        let machine_builder = DefaultMachineBuilder::new(core_machine)
+            .syscall(Box::new(TreeSyscalls {
                 tree,
                 result: &mut result,
-            }));
+            }))
+            .syscall(Box::new(ExtraSyscalls::new(context)));
         let mut machine = AsmMachine::new(machine_builder.build(), None);
         let program_name = Bytes::from_static(b"generator");
         let program_length_bytes = (program.len() as u32).to_le_bytes()[..].to_vec();
@@ -104,6 +118,15 @@ pub fn run<S: Store<H256>>(
         }
     }
     Ok(result)
+}
+
+pub fn run<S: Store<H256>>(
+    config: &Config,
+    tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
+    program: &Bytes,
+) -> Result<RunResult, Box<dyn StdError>> {
+    let mut ctx = DefaultRunContext {};
+    run_with_context(config, tree, program, &mut ctx)
 }
 
 impl RunResult {

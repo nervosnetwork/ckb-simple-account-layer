@@ -1,4 +1,4 @@
-use crate::RunResult;
+use crate::{RunContext, RunResult};
 use ckb_vm::{
     registers::{A0, A1, A7},
     Error as VMError, Memory, Register, SupportMachine, Syscalls,
@@ -7,8 +7,9 @@ use sparse_merkle_tree::{
     traits::{Hasher, Store},
     SparseMerkleTree, H256,
 };
+use std::marker::PhantomData;
 
-pub(crate) struct VmSyscalls<'a, H: Hasher + Default, S: Store<H256>> {
+pub(crate) struct TreeSyscalls<'a, H: Hasher + Default, S: Store<H256>> {
     pub(crate) tree: &'a SparseMerkleTree<H, H256, S>,
     pub(crate) result: &'a mut RunResult,
 }
@@ -24,21 +25,6 @@ fn load_h256<Mac: SupportMachine>(machine: &mut Mac, address: u64) -> Result<H25
     Ok(H256::from(data))
 }
 
-fn load_data<Mac: SupportMachine>(
-    machine: &mut Mac,
-    address: u64,
-    length: u32,
-) -> Result<Vec<u8>, VMError> {
-    let mut data = vec![0u8; length as usize];
-    for (i, c) in data.iter_mut().enumerate() {
-        *c = machine
-            .memory_mut()
-            .load8(&Mac::REG::from_u64(address).overflowing_add(&Mac::REG::from_u64(i as u64)))?
-            .to_u8();
-    }
-    Ok(data)
-}
-
 fn store_data<Mac: SupportMachine>(
     machine: &mut Mac,
     address: u64,
@@ -48,7 +34,7 @@ fn store_data<Mac: SupportMachine>(
 }
 
 impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
-    for VmSyscalls<'a, H, S>
+    for TreeSyscalls<'a, H, S>
 {
     fn initialize(&mut self, _machine: &mut Mac) -> Result<(), VMError> {
         Ok(())
@@ -57,6 +43,7 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
     fn ecall(&mut self, machine: &mut Mac) -> Result<bool, VMError> {
         let code = machine.registers()[A7].to_u64();
         match code {
+            // insert
             3073 => {
                 let key_address = machine.registers()[A0].to_u64();
                 let key = load_h256(machine, key_address)?;
@@ -66,6 +53,7 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
                 machine.set_register(A0, Mac::REG::from_u64(0));
                 Ok(true)
             }
+            // fetch
             3074 => {
                 let key_address = machine.registers()[A0].to_u64();
                 let key = load_h256(machine, key_address)?;
@@ -82,21 +70,31 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
                 machine.set_register(A0, Mac::REG::from_u64(0));
                 Ok(true)
             }
-            3075 => {
-                let data_address = machine.registers()[A0].to_u64();
-                let data_length = machine.registers()[A1].to_u32();
-                let data = load_data(machine, data_address, data_length)?;
-                self.result.return_data = data.into();
-                Ok(true)
-            }
-            3076 => {
-                let data_address = machine.registers()[A0].to_u64();
-                let data_length = machine.registers()[A1].to_u32();
-                let data = load_data(machine, data_address, data_length)?;
-                self.result.logs.push(data.into());
-                Ok(true)
-            }
             _ => Ok(false),
         }
+    }
+}
+
+pub(crate) struct ExtraSyscalls<'a, Mac, C> {
+    pub(crate) context: &'a mut C,
+    _mac: PhantomData<Mac>,
+}
+
+impl<'a, Mac: SupportMachine, C: RunContext<Mac>> ExtraSyscalls<'a, Mac, C> {
+    pub(crate) fn new(context: &'a mut C) -> ExtraSyscalls<'a, Mac, C> {
+        ExtraSyscalls {
+            context,
+            _mac: PhantomData,
+        }
+    }
+}
+
+impl<'a, Mac: SupportMachine, C: RunContext<Mac>> Syscalls<Mac> for ExtraSyscalls<'a, Mac, C> {
+    fn initialize(&mut self, _machine: &mut Mac) -> Result<(), VMError> {
+        Ok(())
+    }
+
+    fn ecall(&mut self, machine: &mut Mac) -> Result<bool, VMError> {
+        self.context.ecall(machine)
     }
 }
