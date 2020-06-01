@@ -62,7 +62,9 @@ impl<'a, H: Hasher + Default, S: Store<H256>, Mac: SupportMachine> Syscalls<Mac>
                     Some(value) => *value,
                     None => {
                         let tree_value = self.tree.get(&key).map_err(|_| VMError::Unexpected)?;
-                        self.result.read_values.insert(key, tree_value);
+                        if tree_value != H256::default() {
+                            self.result.read_values.insert(key, tree_value);
+                        }
                         tree_value
                     }
                 };
