@@ -99,11 +99,11 @@ pub fn run_with_context<S: Store<H256>, C: RunContext<Box<AsmCoreMachine>>>(
     {
         let core_machine = Box::<AsmCoreMachine>::default();
         let machine_builder = DefaultMachineBuilder::new(core_machine)
+            .syscall(Box::new(ExtraSyscalls::new(context)))
             .syscall(Box::new(TreeSyscalls {
                 tree,
                 result: &mut result,
-            }))
-            .syscall(Box::new(ExtraSyscalls::new(context)));
+            }));
         let mut machine = AsmMachine::new(machine_builder.build(), None);
         let program_name = Bytes::from_static(b"generator");
         let program_length_bytes = (program.len() as u32).to_le_bytes()[..].to_vec();

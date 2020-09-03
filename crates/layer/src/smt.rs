@@ -105,12 +105,12 @@ impl<'a, S: Store<H256>> Store<H256> for WrappedStore<'a, S> {
         Ok(())
     }
     fn remove_branch(&mut self, node: &H256) -> Result<(), SMTError> {
-        self.deleted_branches.insert(node.clone());
+        self.deleted_branches.insert(*node);
         self.branches_map.remove(node);
         Ok(())
     }
     fn remove_leaf(&mut self, leaf_hash: &H256) -> Result<(), SMTError> {
-        self.deleted_leaves.insert(leaf_hash.clone());
+        self.deleted_leaves.insert(*leaf_hash);
         self.leaves_map.remove(leaf_hash);
         Ok(())
     }
