@@ -9,8 +9,8 @@ edition = "2018"
 [dependencies]
 blake2b-rs = { version = "0.1" }
 bytes = "0.5.4"
-ckb-types = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }
-ckb-script = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.35.0-rc1" }
+ckb-script = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.35.0-rc1" }
 ckb-vm = { version = "0.19.1", features = ["asm"] }
 derive_more = "0.99.2"
 replace_with = "0.1.5"
