@@ -33,11 +33,59 @@ int hex2bin(uint8_t* buf, const char* src) {
 #define CSAL_NO_VALIDATOR_SKELETON
 #include "../validator.h"
 
+UTEST(smt, verify_empty) {
+  uint8_t key[32];
+  uint8_t value[32];
+  uint8_t root_hash[32];
+  uint8_t proof[96];
+
+  hex2bin(key,
+          "0x0101010101010101010101010101010101010101010101010101010101010101");
+  hex2bin(value,
+          "0x0000000000000000000000000000000000000000000000000000000000000000");
+  hex2bin(root_hash,
+          "0x0000000000000000000000000000000000000000000000000000000000000000");
+  int proof_length = hex2bin(proof, "0x4c");
+
+  csal_entry_t entries[8];
+  csal_change_t changes;
+  csal_change_init(&changes, entries, 32);
+  csal_change_insert(&changes, key, value);
+  csal_change_organize(&changes);
+
+  ASSERT_EQ(0, csal_smt_verify(root_hash, &changes, proof, proof_length));
+}
+
+UTEST(smt, verify_empty2) {
+  uint8_t key[32];
+  uint8_t value[32];
+  uint8_t root_hash[32];
+  uint8_t proof[96];
+
+  hex2bin(key,
+          "0x0101010101010101010101010101010101010101010101010101010101010101");
+  hex2bin(value,
+          "0x0000000000000000000000000000000000000000000000000000000000000000");
+  hex2bin(root_hash,
+          "0x27cdd63d6d03e2a8dfc28d1919def1324b11b44733937ce66b8cf343a2fb536e");
+  int proof_length = hex2bin(proof,
+                             "0x4c50f027cdd63d6d03e2a8dfc28d1919def1324b11b4473"
+                             "3937ce66b8cf343a2fb536e");
+
+  csal_entry_t entries[8];
+  csal_change_t changes;
+  csal_change_init(&changes, entries, 32);
+  csal_change_insert(&changes, key, value);
+  csal_change_organize(&changes);
+
+  ASSERT_EQ(0, csal_smt_verify(root_hash, &changes, proof, proof_length));
+}
+
 UTEST(smt, verify1) {
   uint8_t key[32];
   uint8_t value[32];
   uint8_t root_hash[32];
-  uint8_t proof[64];
+  uint8_t proof[96];
 
   hex2bin(key,
           "0x381dc5391dab099da5e28acd1ad859a051cf18ace804d037f12819c6fbc0e18b");
