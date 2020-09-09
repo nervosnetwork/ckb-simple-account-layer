@@ -203,6 +203,31 @@ void _csal_parent_path(uint8_t key[32], uint8_t height) {
   }
 }
 
+int _csal_zero_value(const uint8_t value[32]) {
+  for (int i = 0; i < 32; i++) {
+    if (value[i] != 0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* Notice that output might collide with one of lhs, or rhs */
+void _csal_merge(const uint8_t lhs[32], const uint8_t rhs[32],
+                 uint8_t output[32]) {
+  if (_csal_zero_value(lhs)) {
+    memcpy(output, rhs, 32);
+  } else if (_csal_zero_value(rhs)) {
+    memcpy(output, lhs, 32);
+  } else {
+    blake2b_state blake2b_ctx;
+    blake2b_init(&blake2b_ctx, 32);
+    blake2b_update(&blake2b_ctx, lhs, 32);
+    blake2b_update(&blake2b_ctx, rhs, 32);
+    blake2b_final(&blake2b_ctx, output, 32);
+  }
+}
+
 /*
  * Theoretically, a stack size of x should be able to process as many as
  * 2 ** (x - 1) updates. In this case with a stack size of 32, we can deal
@@ -230,12 +255,16 @@ int csal_smt_update_root(uint8_t buffer[32], const csal_change_t *pairs,
         }
         memcpy(stack_keys[stack_top], pairs->entries[leave_index].key,
                CSAL_KEY_BYTES);
-        blake2b_init(&blake2b_ctx, 32);
-        blake2b_update(&blake2b_ctx, pairs->entries[leave_index].key,
-                       CSAL_KEY_BYTES);
-        blake2b_update(&blake2b_ctx, pairs->entries[leave_index].value,
-                       CSAL_VALUE_BYTES);
-        blake2b_final(&blake2b_ctx, stack_values[stack_top], 32);
+        if (_csal_zero_value(pairs->entries[leave_index].value)) {
+          memset(stack_values[stack_top], 0, 32);
+        } else {
+          blake2b_init(&blake2b_ctx, 32);
+          blake2b_update(&blake2b_ctx, pairs->entries[leave_index].key,
+                         CSAL_KEY_BYTES);
+          blake2b_update(&blake2b_ctx, pairs->entries[leave_index].value,
+                         CSAL_VALUE_BYTES);
+          blake2b_final(&blake2b_ctx, stack_values[stack_top], 32);
+        }
         stack_top++;
         leave_index++;
         break;
@@ -251,15 +280,11 @@ int csal_smt_update_root(uint8_t buffer[32], const csal_change_t *pairs,
         proof_index += 32;
         uint8_t *key = stack_keys[stack_top - 1];
         uint8_t *value = stack_values[stack_top - 1];
-        blake2b_init(&blake2b_ctx, 32);
         if (_csal_get_bit(key, height)) {
-          blake2b_update(&blake2b_ctx, current_proof, 32);
-          blake2b_update(&blake2b_ctx, value, 32);
+          _csal_merge(current_proof, value, value);
         } else {
-          blake2b_update(&blake2b_ctx, value, 32);
-          blake2b_update(&blake2b_ctx, current_proof, 32);
+          _csal_merge(value, current_proof, value);
         }
-        blake2b_final(&blake2b_ctx, value, 32);
         _csal_parent_path(key, height);
       } break;
       case 0x48: {
@@ -287,16 +312,12 @@ int csal_smt_update_root(uint8_t buffer[32], const csal_change_t *pairs,
         if (memcmp(sibling_key_a, key_b, 32) != 0 || (a_set == b_set)) {
           return CSAL_ERROR_INVALID_SIBLING;
         }
-        blake2b_init(&blake2b_ctx, 32);
         if (a_set) {
-          blake2b_update(&blake2b_ctx, value_b, 32);
-          blake2b_update(&blake2b_ctx, value_a, 32);
+          _csal_merge(value_b, value_a, value_a);
         } else {
-          blake2b_update(&blake2b_ctx, value_a, 32);
-          blake2b_update(&blake2b_ctx, value_b, 32);
+          _csal_merge(value_a, value_b, value_a);
         }
         /* Top-of-stack key is already updated to parent_key_a */
-        blake2b_final(&blake2b_ctx, value_a, 32);
         stack_top++;
       } break;
       default:
