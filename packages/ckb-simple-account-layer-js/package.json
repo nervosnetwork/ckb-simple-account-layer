@@ -1,0 +1,19 @@
+{
+  "name": "ckb-simple-account-layer-js",
+  "version": "0.1.0",
+  "description": "JS bindings for rust ckb-simple-account-layer crate",
+  "main": "lib/index.js",
+  "author": "hupeng <bitrocks.hu@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "install": "neon build"
+  },
+  "dependencies": {
+    "neon-cli": "^0.4.0",
+    "node-pre-gyp": "^0.14.0",
+    "ckb-js-toolkit": "^0.9.1"
+  },
+  "devDependencies": {
+    "ava": "^3.8.2"
+  }
+}
