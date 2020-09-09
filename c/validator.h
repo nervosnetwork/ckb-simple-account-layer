@@ -336,6 +336,7 @@ int csal_smt_verify(const uint8_t hash[32], const csal_change_t *pairs,
 #ifndef CSAL_NO_VALIDATOR_SKELETON
 #include <blockchain.h>
 #include <ckb_syscalls.h>
+#include <ckb_type_id.h>
 
 /*
  * This function abstracts out the exact account model VM to use.
@@ -377,11 +378,12 @@ extern int execute_vm(const uint8_t *source, uint32_t length,
 #define ERROR_UNSUPPORED_FLAGS (CSAL_LAST_ERROR - 5)
 #define ERROR_INVALID_ROOT_HASH (CSAL_LAST_ERROR - 6)
 
-#define UNUSED_FLAGS 0xfffffffffffffffe
+#define UNUSED_FLAGS 0xfffffffffffffffc
 
 #define FLAG_WITNESS_LOCATION 0x1
 #define FLAG_WITNESS_LOCATION_LOCK 0x0
 #define FLAG_WITNESS_LOCATION_TYPE 0x1
+#define FLAG_TYPE_ID 0x2
 
 typedef struct {
   uint8_t *ptr;
@@ -442,7 +444,17 @@ int main() {
   if ((flags & UNUSED_FLAGS) != 0) {
     return ERROR_UNSUPPORED_FLAGS;
   }
-  /* TODO: flag to enable type ID behavior */
+  if ((flags & FLAG_TYPE_ID) != 0) {
+    /* When type ID flag is set, script args should contain the actual type ID
+     */
+    if (args_bytes_seg.size < 40) {
+      return ERROR_INVALID_DATA;
+    }
+    ret = ckb_validate_type_id(&args_bytes_seg.ptr[8]);
+    if (ret != CKB_SUCCESS) {
+      return ret;
+    }
+  }
 
   /*
    * Witness shall contain the content used for validating account state change.

@@ -45,7 +45,6 @@ UTEST(smt, verify1) {
           "0x9158ce9b0e11dd150ba2ae5d55c1db04b1c5986ec626f2e38a93fe8ad0b2923b");
   hex2bin(root_hash,
           "0xa4cbf1b69a848396ac759f362679e2b185ac87a17cba747d2db1ef6fd929042f");
-
   int proof_length = hex2bin(
       proof,
       "0x4c50f85faa7bccd1095c904fe34c99236f0734f909823d8d48b81b0b92bab531f372c1"
