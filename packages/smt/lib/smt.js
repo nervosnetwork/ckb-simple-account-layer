@@ -131,7 +131,6 @@ class SparseMerkleTree {
   }
 
   proof(key) {
-    let value = this.fetch(key);
     let mask = Buffer.alloc(32, 0).buffer;
     let totalLength = 32;
     let data = [];
