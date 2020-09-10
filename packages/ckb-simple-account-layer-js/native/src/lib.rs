@@ -1,11 +1,19 @@
 use bytes::Bytes;
-use ckb_simple_account_layer::{CkbSimpleAccount, Config};
+use ckb_simple_account_layer::{CkbSimpleAccount, ClearStore, Config};
 use ckb_types::{
     core::ScriptHashType,
     packed::{OutPoint, Script, Uint32},
     prelude::*,
 };
 use neon::prelude::*;
+use sparse_merkle_tree::{
+    default_store::DefaultStore,
+    error::Error as SmtError,
+    traits::Store,
+    tree::{BranchNode, LeafNode},
+    SparseMerkleTree, H256,
+};
+use std::error::Error as StdError;
 use std::fmt;
 #[derive(Debug)]
 pub enum Error {
@@ -17,10 +25,38 @@ impl fmt::Display for Error {
         write!(f, "{:?}", self)
     }
 }
+#[derive(Default)]
+pub struct DefaultStoreWrapper(DefaultStore<H256>);
 
-pub struct NativeCkbSimpleAccount {
-    config: Config,
+impl Store<H256> for DefaultStoreWrapper {
+    fn get_branch(&self, node: &H256) -> Result<Option<BranchNode>, SmtError> {
+        self.0.get_branch(node)
+    }
+    fn get_leaf(&self, leaf_hash: &H256) -> Result<Option<LeafNode<H256>>, SmtError> {
+        self.0.get_leaf(leaf_hash)
+    }
+    fn insert_branch(&mut self, node: H256, branch: BranchNode) -> Result<(), SmtError> {
+        self.0.insert_branch(node, branch)
+    }
+    fn insert_leaf(&mut self, leaf_hash: H256, leaf: LeafNode<H256>) -> Result<(), SmtError> {
+        self.0.insert_leaf(leaf_hash, leaf)
+    }
+    fn remove_branch(&mut self, node: &H256) -> Result<(), SmtError> {
+        self.0.remove_branch(node)
+    }
+    fn remove_leaf(&mut self, leaf_hash: &H256) -> Result<(), SmtError> {
+        self.0.remove_leaf(leaf_hash)
+    }
 }
+
+impl ClearStore for DefaultStoreWrapper {
+    fn clear_store(&mut self) -> Result<(), Box<dyn StdError>> {
+        self.0.clear();
+        Ok(())
+    }
+}
+
+pub struct NativeCkbSimpleAccount(CkbSimpleAccount<DefaultStoreWrapper>);
 
 declare_types! {
     pub class JsNativeCkbSimpleAccount for NativeCkbSimpleAccount {
@@ -79,7 +115,8 @@ declare_types! {
             // 6. capacity
             let capacity = js_config.get(&mut cx, "capacity")?.downcast::<JsNumber>().or_throw(&mut cx)?.value() as u64;
             let config = Config { validator: validator, generator: generator, validator_outpoint: validator_outpoint, type_script: type_script, lock_script: lock_script, capacity: capacity };
-            Ok(NativeCkbSimpleAccount{ config: config})
+            let ckb_simple_account = CkbSimpleAccount::empty(config);
+            Ok(NativeCkbSimpleAccount(ckb_simple_account))
         }
     }
 }
