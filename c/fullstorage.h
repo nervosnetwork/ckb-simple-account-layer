@@ -10,6 +10,7 @@
 
 #include <blake2b.h>
 #include <ckb_syscalls.h>
+
 #include "core.h"
 
 #ifdef CSAL_VALIDATOR_TYPE

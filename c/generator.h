@@ -28,7 +28,8 @@ int csal_change_fetch(csal_change_t *state, const uint8_t key[CSAL_KEY_BYTES],
 
 /* See validator.h for explanations on execute_vm */
 extern int execute_vm(const uint8_t *source, uint32_t length,
-                      csal_change_t *existing_values, csal_change_t *changes);
+                      csal_change_t *existing_values, csal_change_t *changes,
+                      bool *destructed);
 
 #include <ckb_syscalls.h>
 
@@ -40,12 +41,14 @@ int main(int argc, char *argv[]) {
     return -1;
   }
   uint32_t length = *((uint32_t *)argv[1]);
+
   /* Generator don't need any setup for now, the actual APIs will be implemented
    * via syscalls */
   csal_change_t existing_values = NULL;
   csal_change_t changes = NULL;
+  bool destructed = false;
   return execute_vm((const uint8_t *)argv[2], length, &existing_values,
-                    &changes);
+                    &changes, &destructed);
 }
 
 #define _CSAL_CHANGE_INSERT_SYSCALL_NUMBER 3073
