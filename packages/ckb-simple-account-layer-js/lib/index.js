@@ -1,4 +1,4 @@
-var { CkbSimpleAccount: NativeCkbSimpleAccount } = require("../native");
+const { CkbSimpleAccount: NativeCkbSimpleAccount } = require("../native");
 
 class CkbSimpleAccount {
   constructor(config) {

@@ -1,20 +1,32 @@
 {
-  "name": "ckb-simple-account-layer",
-  "version": "0.1.0",
-  "description": "A simple account layer for Nervos CKB",
-  "main": "index.js",
-  "author": "Xuejie Xiao <xxuejie@gmail.com>",
-  "license": "MIT",
-  "scripts": {
-    "fmt": "prettier --write \"lib/**/*.js\"",
-    "test": "ava"
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=12.0.0"
   },
+  "cpu": [
+    "x64"
+  ],
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "devDependencies": {
-    "ava": "^3.7.1",
-    "prettier": "^2.0.5"
+    "@ava/typescript": "^1.1.1",
+    "@strictsoftware/typedoc-plugin-monorepo": "^0.3.1",
+    "@typescript-eslint/eslint-plugin": "^3.5.0",
+    "@typescript-eslint/parser": "^3.5.0",
+    "ava": "^3.8.2",
+    "eslint": "^7.1.0",
+    "prettier": "^2.0.5",
+    "ts-node": "^8.10.2",
+    "typedoc": "^0.17.7",
+    "typescript": "^3.9.5"
   },
-  "dependencies": {
-    "blake2b": "^2.1.3",
-    "ckb-js-toolkit": "^0.9.1"
+  "scripts": {
+    "docs": "typedoc ."
   }
 }
