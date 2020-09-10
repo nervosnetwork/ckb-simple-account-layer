@@ -41,7 +41,29 @@ test("create a CkbSimpleAccount instance", async (t) => {
     lock_script: normalizers.NormalizeScript(lock_script),
     capacity: capacity,
   };
-  const _ckbSimpleAccount = new CkbSimpleAccount(config);
+  const ckbSimpleAccount = new CkbSimpleAccount(config);
+
+  // test_run_read_written_value case
+  const write_code = Buffer.from("W", "utf8");
+  const read_code = Buffer.from("R", "utf8");
+  const key = Buffer.from(
+    "e8c0265680a02b680b6cbc880348f062b825b28e237da7169aded4bcac0a04e5",
+    "hex"
+  );
+  const value = Buffer.from(
+    "2ca41595841e46ce8e74ad749e5c3f1d17202150f99c3d8631233ebdd19b19eb",
+    "hex"
+  );
+  const program = Buffer.concat([
+    write_code,
+    key,
+    value,
+    read_code,
+    key,
+    value,
+  ]);
+  let tx = ckbSimpleAccount.generate(toArrayBuffer(program));
+  console.log(tx.outputs);
   t.pass();
 });
 

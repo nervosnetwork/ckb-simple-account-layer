@@ -11,7 +11,7 @@ use sparse_merkle_tree::{
     error::Error as SmtError,
     traits::Store,
     tree::{BranchNode, LeafNode},
-    SparseMerkleTree, H256,
+    H256,
 };
 use std::error::Error as StdError;
 use std::fmt;
@@ -118,7 +118,151 @@ declare_types! {
             let ckb_simple_account = CkbSimpleAccount::empty(config);
             Ok(NativeCkbSimpleAccount(ckb_simple_account))
         }
+
+        method generate(mut cx) {
+            let mut this = cx.this();
+            let js_program = cx.argument::<JsArrayBuffer>(0)?;
+            let program_slice = cx.borrow(&js_program, |data| { data.as_slice::<u8>().to_vec() });
+            let program = Bytes::from(program_slice);
+            let generate_result =
+            cx.borrow_mut(&mut this, |data| { data.0.generate(&program) });
+            match generate_result {
+                Ok(tx) => {
+                    println!("{}",tx);
+                    // convert CKB Transaction to Js object
+                    let js_transaction = JsObject::new(&mut cx);
+                    let raw_tx = tx.raw();
+                    // version
+                    let version: u32 = raw_tx.version().unpack();
+                    let js_version = cx.string(format!("{:#x}", version));
+                    js_transaction.set(&mut cx, "version", js_version)?;
+                    // cell_deps
+                    let cell_deps = raw_tx.cell_deps();
+                    let js_cell_deps = JsArray::new(&mut cx, cell_deps.len() as u32);
+                    for i in 0..cell_deps.item_count() {
+                        let cell_dep = cell_deps.get(i).unwrap();
+                        // out_point
+                        let out_point = cell_dep.out_point();
+                        let js_out_point = JsObject::new(&mut cx);
+                        // tx_hash
+                        let tx_hash = out_point.tx_hash();
+                        let js_tx_hash = cx.string(format!("{:#x}", tx_hash));
+                        // index
+                        let index = out_point.index();
+                        let js_index = cx.string(format!("{:#x}", index));
+                        js_out_point.set(&mut cx, "tx_hash", js_tx_hash)?;
+                        js_out_point.set(&mut cx, "index", js_index)?;
+                        // dep_type
+                        let dep_type = cell_dep.dep_type();
+                        let js_dep_type = cx.string(format!("{:#x}", dep_type.as_slice()[0]));
+                        // cell_dep
+                        let js_cell_dep = JsObject::new(&mut cx);
+                        js_cell_dep.set(&mut cx, "out_point", js_out_point)?;
+                        js_cell_dep.set(&mut cx, "dep_type", js_dep_type)?;
+                        js_cell_deps.set(&mut cx, i as u32, js_cell_dep)?;
+                    }
+                    js_transaction.set(&mut cx, "cell_deps", js_cell_deps)?;
+                    // header_deps
+                    let header_deps = raw_tx.header_deps();
+                    let js_header_deps = JsArray::new(&mut cx, header_deps.len() as u32);
+                    for i in 0..header_deps.item_count() {
+                        let header_dep = header_deps.get(i).unwrap();
+                        let js_header_dep = cx.string(format!("{:#x}", header_dep));
+                        js_header_deps.set(&mut cx, i as u32, js_header_dep)?;
+                    }
+                    js_transaction.set(&mut cx, "header_deps", js_header_deps)?;
+                    // inputs
+                    let inputs = raw_tx.inputs();
+                    let js_inputs = JsArray::new(&mut cx, inputs.len() as u32);
+                    for i in 0..inputs.item_count() {
+                        let input = inputs.get(i).unwrap();
+                        // since
+                        let since = input.since();
+                        let js_since = cx.string(format!("{:#x}", since));
+                        // previous_output
+                        let previous_output = input.previous_output();
+                        // tx_hash
+                        let tx_hash = previous_output.tx_hash();
+                        let js_tx_hash = cx.string(format!("{:#x}", tx_hash));
+                        // index
+                        let index = previous_output.index();
+                        let js_index = cx.string(format!("{:#x}", index));
+                        let js_previous_output = JsObject::new(&mut cx);
+                        js_previous_output.set(&mut cx, "tx_hash", js_tx_hash)?;
+                        js_previous_output.set(&mut cx, "index", js_index)?;
+                        // input
+                        let js_input = JsObject::new(&mut cx);
+                        js_input.set(&mut cx, "previous_output", js_previous_output)?;
+                        js_input.set(&mut cx, "since", js_since)?;
+                        js_inputs.set(&mut cx, i as u32, js_input)?;
+                    }
+                    js_transaction.set(&mut cx, "inputs", js_inputs)?;
+                    // outputs
+                    let outputs = raw_tx.outputs();
+                    let js_outputs = JsArray::new(&mut cx, outputs.len() as u32);
+                    for i in 0..outputs.item_count() {
+                        let output = outputs.get(i).unwrap();
+                        // capacity
+                        let capacity = output.capacity();
+                        let js_capacity = cx.string(format!("{:#x}", capacity));
+                        // lock script
+                        let lock_script = output.lock();
+                        let code_hash = lock_script.code_hash();
+                        let js_code_hash = cx.string(format!("{:#x}", code_hash));
+                        let hash_type = lock_script.hash_type();
+                        let js_hash_type = cx.string(format!("{:#x}", hash_type.as_slice()[0]));
+                        let args = lock_script.args();
+                        let js_args = cx.string(format!("{:#x}", args));
+                        let js_lock_script = JsObject::new(&mut cx);
+                        js_lock_script.set(&mut cx, "code_hash", js_code_hash)?;
+                        js_lock_script.set(&mut cx, "hash_type", js_hash_type)?;
+                        js_lock_script.set(&mut cx, "args", js_args)?;
+                        // type script
+                        let type_script_opt = output.type_();
+                        let js_type_script = if type_script_opt.is_some() {
+                            let type_script = type_script_opt.to_opt().unwrap();
+                            let code_hash = type_script.code_hash();
+                            let js_code_hash = cx.string(format!("{:#x}", code_hash));
+                            let hash_type = type_script.hash_type();
+                            let js_hash_type = cx.string(format!("{:#x}", hash_type.as_slice()[0]));
+                            let args = type_script.args();
+                            let js_args = cx.string(format!("{:#x}", args));
+                            let js_type_script = JsObject::new(&mut cx);
+                            js_type_script.set(&mut cx, "code_hash", js_code_hash)?;
+                            js_type_script.set(&mut cx, "hash_type", js_hash_type)?;
+                            js_type_script.set(&mut cx, "args", js_args)?;
+                            js_type_script
+                        } else {
+                            //JsNull::new()
+                            JsObject::new(&mut cx)
+                        };
+                        // output
+                        let js_output = JsObject::new(&mut cx);
+                        js_output.set(&mut cx, "capacity", js_capacity)?;
+                        js_output.set(&mut cx, "lock", js_lock_script)?;
+                        js_output.set(&mut cx, "type_", js_type_script)?;
+                        js_outputs.set(&mut cx, i as u32, js_output)?;
+                    }
+                    js_transaction.set(&mut cx, "outputs", js_outputs)?;
+                    // outputs_data
+                    let outputs_data = raw_tx.outputs_data();
+                    let js_outputs_data = JsArray::new(&mut cx, outputs_data.len() as u32);
+                    for i in 0..outputs_data.item_count() {
+                        let output_data = outputs_data.get(i).unwrap();
+                        let js_output_data = cx.string(format!("{:#x}", output_data));
+                        js_outputs_data.set(&mut cx, i as u32, js_output_data)?;
+                    }
+                    js_transaction.set(&mut cx, "outputs_data", js_outputs_data)?;
+                    // witnesses, it will always be empty here
+                    let js_witnesses = JsArray::new(&mut cx, 0);
+                    js_transaction.set(&mut cx, "witnesses", js_witnesses)?;
+                    Ok(js_transaction.upcast())
+                },
+                error => cx.throw_error(format!("Generate transaction from program failed: {:?}", error.unwrap_err())),
+            }
+        }
     }
+
 }
 
 fn assemble_packed_validator_outpoint(tx_hash: &[u8], index: Uint32) -> Result<OutPoint, Error> {

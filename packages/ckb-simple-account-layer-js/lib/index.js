@@ -5,6 +5,9 @@ class CkbSimpleAccount {
     this.config = config;
     this.nativeCkbSimpleAccount = new NativeCkbSimpleAccount(config);
   }
+  generate(program) {
+    return this.nativeCkbSimpleAccount.generate(program);
+  }
 }
 
 module.exports = { CkbSimpleAccount };
