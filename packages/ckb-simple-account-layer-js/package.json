@@ -1,5 +1,5 @@
 {
-  "name": "ckb-simple-account-layer-js",
+  "name": "@ckb-simple-account-layer/js-binding",
   "version": "0.1.0",
   "description": "JS bindings for rust ckb-simple-account-layer crate",
   "main": "lib/index.js",
