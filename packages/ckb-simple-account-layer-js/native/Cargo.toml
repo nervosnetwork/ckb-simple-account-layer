@@ -1,0 +1,22 @@
+[package]
+name = "ckb-simple-account-layer-js"
+version = "0.1.0"
+authors = ["hupeng <bitrocks.hu@gmail.com>"]
+license = "MIT"
+build = "build.rs"
+edition = "2018"
+exclude = ["artifacts.json", "index.node"]
+
+[lib]
+name = "ckb_simple_account_layer_js"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+neon-build = "0.4.0"
+
+[dependencies]
+neon = "0.4.0"
+ckb-simple-account-layer = {git = "https://github.com/nervosnetwork/ckb-simple-account-layer", branch = "develop"}
+bytes = "0.5.4"
+sparse-merkle-tree = { git = "https://github.com/jjyr/sparse-merkle-tree", rev = "0e313cf" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.31.0-pre1" }

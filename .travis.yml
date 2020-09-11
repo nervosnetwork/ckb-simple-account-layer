@@ -26,14 +26,20 @@ before_install:
   # Install NPM packages
   - node -v
   - npm -v
-  - npm install
+  - npm -g install neon-cli
+  - npm -g install yarn
+  - yarn -v
+
+install:
+    - travis_wait 30 yarn
 
 script:
-  - npm run test
-  - npm run fmt
   - make test
   - make fmt
   - cd crates/layer && cargo test && cd ../..
   - cd crates/layer && cargo clippy && cd ../..
   - cd crates/layer && cargo fmt --all && cd ../..
+  - yarn workspaces run test
+  - yarn workspaces run fmt
+  - yarn workspaces run lint
   - git diff --exit-code
