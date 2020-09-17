@@ -107,3 +107,4 @@ dist
 c/tests/runtest
 *.debug
 crates/layer/Cargo.lock
+crates/layer/target/

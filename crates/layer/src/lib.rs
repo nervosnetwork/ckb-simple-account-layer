@@ -10,13 +10,13 @@ pub use smt::{CkbBlake2bHasher, ClearStore};
 
 use crate::{
     smt::{generate_proof, Proof, WrappedStore},
-    vm::TreeSyscalls,
+    vm::{ExtraSyscalls, TreeSyscalls},
 };
 use bytes::Bytes;
 use ckb_types::packed::{Byte32, OutPoint, Script};
 use ckb_vm::{
     machine::asm::{AsmCoreMachine, AsmMachine},
-    DefaultMachineBuilder,
+    DefaultMachineBuilder, Error as VMError, SupportMachine,
 };
 use sparse_merkle_tree::{traits::Store, SparseMerkleTree, H256};
 use std::collections::HashMap;
@@ -75,16 +75,32 @@ pub struct RunProofResult {
     pub write_old_proof: Bytes,
 }
 
-pub fn run<S: Store<H256>>(
+/// A context to run the program
+pub trait RunContext<Mac: SupportMachine> {
+    /// Handle extra syscalls
+    fn ecall(&mut self, machine: &mut Mac) -> Result<bool, VMError>;
+}
+/// A dummy RunContext do nothing
+pub struct DefaultRunContext {}
+
+impl<Mac: SupportMachine> RunContext<Mac> for DefaultRunContext {
+    fn ecall(&mut self, _machine: &mut Mac) -> Result<bool, VMError> {
+        Ok(false)
+    }
+}
+
+pub fn run_with_context<S: Store<H256>, C: RunContext<Box<AsmCoreMachine>>>(
     config: &Config,
     tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
     program: &Bytes,
+    context: &mut C,
 ) -> Result<RunResult, Box<dyn StdError>> {
     let mut result = RunResult::default();
     {
         let core_machine = Box::<AsmCoreMachine>::default();
-        let machine_builder =
-            DefaultMachineBuilder::new(core_machine).syscall(Box::new(TreeSyscalls {
+        let machine_builder = DefaultMachineBuilder::new(core_machine)
+            .syscall(Box::new(ExtraSyscalls::new(context)))
+            .syscall(Box::new(TreeSyscalls {
                 tree,
                 result: &mut result,
             }));
@@ -102,6 +118,15 @@ pub fn run<S: Store<H256>>(
         }
     }
     Ok(result)
+}
+
+pub fn run<S: Store<H256>>(
+    config: &Config,
+    tree: &SparseMerkleTree<CkbBlake2bHasher, H256, S>,
+    program: &Bytes,
+) -> Result<RunResult, Box<dyn StdError>> {
+    let mut ctx = DefaultRunContext {};
+    run_with_context(config, tree, program, &mut ctx)
 }
 
 impl RunResult {
@@ -163,16 +188,8 @@ impl RunResult {
 }
 
 impl RunProofResult {
-    pub fn serialize(&self, program: &Bytes) -> Result<Bytes, Box<dyn StdError>> {
+    pub fn serialize_pure(&self) -> Result<Vec<u8>, Box<dyn StdError>> {
         let mut buffer = Vec::new();
-        if program.len() > std::u32::MAX as usize {
-            return Err("Program is too long!".into());
-        }
-        buffer.extend_from_slice(&(program.len() as u32).to_le_bytes()[..]);
-        buffer.extend_from_slice(program);
-        if self.read_values.len() > std::u32::MAX as usize {
-            return Err("Too many read values!".into());
-        }
         buffer.extend_from_slice(&(self.read_values.len() as u32).to_le_bytes()[..]);
         for (key, value) in &self.read_values {
             buffer.extend_from_slice(key.as_slice());
@@ -195,6 +212,20 @@ impl RunProofResult {
         }
         buffer.extend_from_slice(&(self.write_old_proof.len() as u32).to_le_bytes()[..]);
         buffer.extend_from_slice(&self.write_old_proof);
+        Ok(buffer)
+    }
+
+    pub fn serialize(&self, program: &Bytes) -> Result<Bytes, Box<dyn StdError>> {
+        let mut buffer = Vec::new();
+        if program.len() > std::u32::MAX as usize {
+            return Err("Program is too long!".into());
+        }
+        buffer.extend_from_slice(&(program.len() as u32).to_le_bytes()[..]);
+        buffer.extend_from_slice(program);
+        if self.read_values.len() > std::u32::MAX as usize {
+            return Err("Too many read values!".into());
+        }
+        buffer.extend(self.serialize_pure()?);
         Ok(buffer.into())
     }
 }
