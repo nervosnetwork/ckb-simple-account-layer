@@ -14,7 +14,7 @@ ckb-script = { git = "https://github.com/nervosnetwork/ckb", tag = "v0.35.0-rc1"
 ckb-vm = { version = "0.19.1", features = ["asm"] }
 derive_more = "0.99.2"
 replace_with = "0.1.5"
-sparse-merkle-tree = "0.3"
+sparse-merkle-tree = "0.3.1-pre"
 
 [dev-dependencies]
 hex = "0.4.2"
