@@ -25,7 +25,8 @@
 #endif
 
 int execute_vm(const uint8_t *source, uint32_t length,
-               csal_change_t *existing_values, csal_change_t *changes) {
+               csal_change_t *existing_values, csal_change_t *changes,
+               bool *destructed) {
   size_t operation_length = 1 + CSAL_KEY_BYTES + CSAL_VALUE_BYTES;
   if (length % operation_length != 0) {
     return -100;
