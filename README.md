@@ -1,5 +1,7 @@
 # ckb-simple-account-layer
 
+**NOTE**: this repository is now only for legacy purposes, we have put together a more complete and secure design as a [Sparse Merkle Tree](https://github.com/nervosnetwork/sparse-merkle-tree) data structure. Please use the SMT implementation for all future projects.
+
 A CKB account layer solution. This project consists of 3 parts:
 
 * Minimal single header C parts for integrating an existing VM(whether it's JavaScript VM, Forth VM, EVM, Move VM, etc.) with an account based design. We are providing C source file since we are only defining a minimal integration layer, in this case, a C implementation provides maximum interoperability. Your VM can be written in any language supported by RISC-V, such as Rust.
